@@ -1,6 +1,9 @@
 # WhatsMerged.WinForms
 A Windows Forms (.NET) front-end for showing a branch-by-branch "What's been merged" overview of any GIT project that you have access to.
 
+Screenshot:<br>
+![WhatsMerged screenshot](WhatsMerged-01.png)
+
 **WhatsMerged.WinForms** properties and features:
 
 - Built using Visual Studio 2019 and the current latest .NET Core 3.0 preview (the first to have Windows Forms support). See below for details.
