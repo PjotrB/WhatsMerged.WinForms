@@ -5,6 +5,12 @@ VisualStudioVersion = 16.0.28705.295
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WhatsMerged.WinForms", "WhatsMerged\WhatsMerged.WinForms.csproj", "{D6D4F7F2-FC3F-471C-B375-546706972A27}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Additional files", "Additional files", "{162FCCAD-B50F-4377-A15C-167A74EC4C9A}"
+	ProjectSection(SolutionItems) = preProject
+		LICENSE = LICENSE
+		README.md = README.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
