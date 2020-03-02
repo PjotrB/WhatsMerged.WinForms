@@ -1,20 +1,16 @@
 # WhatsMerged.WinForms
-A Windows Forms (.NET) front-end for showing a branch-by-branch "What's been merged" overview of any GIT project that you have access to.
+**Q**: What is it?<br>
+**A**: **WhatsMerged.WinForms** is a *.NET Core 3.1* based Windows Forms front-end for showing a branch-by-branch "What has been merged"-overview of your GIT-based projects.
 
-Screenshot:<br>
+**Q**: How does it look?<br>
+**A**: See image:<br>
 ![WhatsMerged screenshot](WhatsMerged-01.png)
 
 **WhatsMerged.WinForms** properties and features:
 
-- Built using Visual Studio 2019 and the current latest .NET Core 3.0 preview (the first to have Windows Forms support). See below for details.
-- When running, it uses your locally installed **git.exe** (which must be available through your **`PATH`**) to access the repos that you are already using.
-- You can tell it where to look for repos.
-- It works exclusively on *remote branches*. It is *fine* to be connected with any branch locally, or even to have work in progress - it's all irrelevant, because this tool only uses *remote branches* (prefixed with **`origin/`**).
-- It works best with projects for which work typically happens in **`feature/xyz`** branches and e.g. **`bugfix/xyz`**, **`hotfix/xyz`** etc. branches, which then get merged into branches with common names such as **`develop`**, **`test`**, **`release`** (or **`release/1.1`**, **`release/1.2`**, etc) and finally **`master`**.
-
-Output from **`dotnet list package`**, filtered for "preview":
-
-    Top-level Package                                   Requested                    Resolved
-    > Microsoft.NETCore.Platforms                       [3.0.0-preview3.19128.7, )   3.0.0-preview3.19128.7
-    > Microsoft.WindowsDesktop.App                      [3.0.0-preview3-27504-2, )   3.0.0-preview3-27504-2
-    > runtime.win-x64.Microsoft.NETCore.DotNetAppHost   [3.0.0-preview3-27503-5, )   3.0.0-preview3-27503-5
+- Built using **Visual Studio 2019** and **.NET Core 3.1**.
+- The **WhatsMerged.WinForms** project is dual targeted for .NET Core 3.1 and .NET Framework 4.7.2. The reason is that the VS 2019 Forms Designer only works when targeting .NET Framework; offering the same support for .NET Core-only projects is still a [Work-In-Progress](https://devblogs.microsoft.com/dotnet/updates-to-net-core-windows-forms-designer-in-visual-studio-16-5-preview-1/).
+- When running, WhatsMerged.WinForms uses your locally installed **git.exe** (which must be available through your **`PATH`**) to access the repos that you are already using.
+- You can tell WhatsMerged.WinForms where to look for repo folders, which it will then find by doing a disk scan.
+- WhatsMerged.WinForms works exclusively on *remote branches*. It is *fine* to have any branch checked out locally, or even to have work in progress - none of this is relevant to WhatsMerged.WinForms, because it only examines *remote branches* (prefixed with **`origin/`**).
+- WhatsMerged.WinForms works best with projects for which work typically happens in branches like **`feature/xyz`**, **`bugfix/xyz`**, **`hotfix/xyz`** etc. which then get merged into branches with common names such as **`develop`**, **`test`**, **`release`** (or **`release/1.1`**, **`release/1.2`**, etc) and finally **`master`**.

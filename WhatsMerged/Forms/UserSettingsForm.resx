@@ -117,4 +117,7 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="lblExclusions.Text" xml:space="preserve">
+    <value>The 2nd example shows exclusions: subfolders prefixed with a caret (^). The scanner will not enter these folders. You can use this to make the scanning go faster and/or to hide projects in irrelevant subfolders.</value>
+  </data>
 </root>
