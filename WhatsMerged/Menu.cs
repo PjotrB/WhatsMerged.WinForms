@@ -7,8 +7,13 @@ namespace WhatsMerged.WinForms
     {
         public static ContextMenuStrip WithItem(this ContextMenuStrip menu, string text, Action action)
         {
-            var item = CreateItem(text, action);
-            menu.Items.Add(item);
+            menu.Items.Add(CreateItem(text, action));
+            return menu;
+        }
+
+        public static ContextMenuStrip WithSeparator(this ContextMenuStrip menu)
+        {
+            menu.Items.Add(new ToolStripSeparator());
             return menu;
         }
 

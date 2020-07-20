@@ -1,4 +1,6 @@
-﻿using System.Windows.Forms;
+﻿using System;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace WhatsMerged.WinForms
 {
@@ -7,7 +9,7 @@ namespace WhatsMerged.WinForms
         /// <summary>
         /// Empty the Windows event queue, processing all Paint events and ignoring/discarding all others.
         /// </summary>
-        public static void PaintNow()
+        public static void PaintNowWhileDiscardingOtherEvents()
         {
             // Inspired by https://www.codeproject.com/Tips/513764/Repainting-WinForms-windows-safely-inside-a-proces
 
@@ -20,11 +22,11 @@ namespace WhatsMerged.WinForms
         }
 
         /// <summary>
-        /// Private class for use in PaintNow()
+        /// Private class for use in PaintNowWhileDiscardingOtherEvents()
         /// </summary>
-        private class PaintMessageFilter : IMessageFilter
+        public class PaintMessageFilter : IMessageFilter
         {
-            static public IMessageFilter Instance = new PaintMessageFilter();
+            public static readonly IMessageFilter Instance = new PaintMessageFilter();
 
             public bool PreFilterMessage(ref Message m)
             {
@@ -44,5 +46,18 @@ namespace WhatsMerged.WinForms
                 ? s.Substring(0, s.Length - strToRemove.Length)
                 : s;
         }
+
+        public static float GetScalingFactor()
+        {
+            using (var graphics = Graphics.FromHwnd(IntPtr.Zero))
+            {
+                // 96 dpi means scaling of 100%. Dividing the returned dpi by 96 gives the scaling factor, where 1.00 means 100%.
+                return graphics.DpiX / 96;
+            }
+        }
+
+        public static int Scale(int value, float factor) => (int)Math.Round(value * factor);
+
+        public static DialogResult ShowMessage(string msg, MessageBoxButtons buttonsToShow = MessageBoxButtons.OK) => MessageBox.Show(msg, "WhatsMerged info", buttonsToShow);
     }
 }

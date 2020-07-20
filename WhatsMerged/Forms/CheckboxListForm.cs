@@ -7,17 +7,11 @@ namespace WhatsMerged.WinForms.Forms
     {
         public string Intro
         {
-            get { return lblIntro.Text; }
-            set { lblIntro.Text = value; }
+            get => lblIntro.Text;
+            set => lblIntro.Text = value;
         }
 
         public List<string> Items { get; set; }
-
-        private void SetFormSize()
-        {
-            var size = lblIntro.Size;
-            Size = new System.Drawing.Size(size.Width + 50, size.Height + 100);
-        }
 
         public CheckboxListForm()
         {
@@ -27,20 +21,23 @@ namespace WhatsMerged.WinForms.Forms
         private void MessageForm_Load(object sender, System.EventArgs e)
         {
             checkedListBox1.Items.Clear();
-
             foreach (var item in Items)
                 checkedListBox1.Items.Add(item);
 
-            checkedListBox1.Height = 8 + 18 * Items.Count;
+            var factor = Utils.GetScalingFactor();
+
+            checkedListBox1.Height = Utils.Scale(8 + 18 * Items.Count, factor);
 
             // Re-position checkedListBox1 under variable-sized intro text
-            checkedListBox1.Top = lblIntro.Top + lblIntro.Height + 16;
+            checkedListBox1.Top = lblIntro.Top + lblIntro.Height + Utils.Scale(16, factor);
 
             // Adjust Form height to show all of checkedListBox1 + space below for button.
-            Height = checkedListBox1.Top + checkedListBox1.Height + 84;
+            Height = checkedListBox1.Top + checkedListBox1.Height + Utils.Scale(84, factor);
 
             // Adjust Form width to show all of variable-sized intro text, with margins left + right the same.
             Width = lblIntro.Left + lblIntro.Width + lblIntro.Left * 2;
+
+            // Size takes its value from the Height and Width that we have just set
             MinimumSize = Size;
         }
 

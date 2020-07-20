@@ -52,13 +52,10 @@ namespace WhatsMerged.WinForms.Forms
         public void ClearError()
         {
             ShowError(null);
-            Utils.PaintNow();
+            Utils.PaintNowWhileDiscardingOtherEvents();
         }
 
-        public bool HasError()
-        {
-            return txtError.Text.HasValue();
-        }
+        public bool HasError() => txtError.Text.HasValue();
 
         public void ShowError(string msg)
         {
@@ -68,7 +65,7 @@ namespace WhatsMerged.WinForms.Forms
                 txtError.Text = txtError.Text.HasValue() ? txtError.Text + "\r\n" + msg : msg;
 
             txtError.Visible = txtError.Text.HasValue();
-            Utils.PaintNow();
+            Utils.PaintNowWhileDiscardingOtherEvents();
         }
 
         #endregion
@@ -157,10 +154,7 @@ namespace WhatsMerged.WinForms.Forms
                 yield return path + DefaultExclusions;
         }
 
-        private string UserHomePath
-        {
-            get { return Environment.ExpandEnvironmentVariables("%HOMEDRIVE%%HOMEPATH%"); }
-        }
+        private string UserHomePath => Environment.ExpandEnvironmentVariables("%HOMEDRIVE%%HOMEPATH%");
 
         private void SetDoubleBuffering(Control ctrl, bool value)
         {
@@ -214,7 +208,8 @@ namespace WhatsMerged.WinForms.Forms
         {
             try
             {
-                // Set various tooltips (because that is rather horrible to do using the Forms Designer):
+                // Set various tooltips. We use a Helper method because (1) tooltips are horrible to set using the Forms Designer, and (2) this allows
+                // to store all tooltips in a dictionary which is used later on to make them work better.
                 SetToolTip(btnReloadProject, "Refresh branches from Git");
                 SetToolTip(btnUserSettings, "Configure folders");
 
@@ -226,6 +221,9 @@ namespace WhatsMerged.WinForms.Forms
                 SetToolTip(btnWorkVsItself, "Show which Work branches have been merged into other Work branches");
                 SetToolTip(btnWorkAndMergeVsItself, "Show which Work+Merge branches have been merged into other Work+Merge branches");
 
+                SetToolTip(lstWorkBranches, "Branches can be moved to other lists by using the Right-Click menu, or using Ctrl-Left / Ctrl-Right hotkeys, or Double Click (move into Merge list)");
+                SetToolTip(lstMergeBranches, "Branches can be moved to other lists by using the Right-Click menu, or using Ctrl-Left / Ctrl-Right hotkeys, or Double Click (move into Ignore list)");
+                SetToolTip(lstIgnoreBranches, "Branches can be moved to other lists by using the Right-Click menu, or using Ctrl-Left / Ctrl-Right hotkeys, or Double Click (move into Merge list)");
             }
             finally
             {
@@ -236,7 +234,7 @@ namespace WhatsMerged.WinForms.Forms
 
         private void MainForm_MouseClick(object sender, MouseEventArgs e)
         {
-            this.ActiveControl = null; // This makes it possible to un-set the active control by a click outside of all controls.
+            ActiveControl = null; // This makes it possible to un-set the active control by a click outside of all controls.
         }
 
         private void MainForm_Shown(object sender, EventArgs e)
@@ -313,7 +311,7 @@ namespace WhatsMerged.WinForms.Forms
         {
             grid.Rows.Clear();
             grid.Columns.Clear();
-            Utils.PaintNow(); // Allow the grid to refresh & show that it is empty before we start any other processing.
+            Utils.PaintNowWhileDiscardingOtherEvents(); // Allow the grid to refresh & show that it is empty before we start any other processing.
         }
 
         private void LoadSettingsAndGetGitData()
@@ -336,10 +334,22 @@ namespace WhatsMerged.WinForms.Forms
                 {
                     ClearError();
                     WMEngine.GitRefresh();
-                    if (!HasError()) break;
-                    var response = MessageBox.Show("The server is not accessible, or your password may have expired.\r\nDo you want to Abort, Retry or Ignore (= proceed without retrying)?", "Git refresh failed", MessageBoxButtons.AbortRetryIgnore);
-                    if (response == DialogResult.Abort) return;
-                    if (response == DialogResult.Ignore) break;
+                    if (HasError())
+                    {
+                        if (txtError.Text.Contains("[deleted]"))
+                        {
+                            var msg = "One or more branches were deleted on the server, see output from git:\r\n\r\n" + txtError.Text + "\r\n\r\nThe branch lists will be updated to reflect this.";
+                            ClearError();
+                            Utils.ShowMessage(msg);
+                        }
+                        else
+                        {
+                            var response = Utils.ShowMessage("The server is not accessible, or your password may have expired.\r\nDo you want to Abort, Retry or Ignore (= proceed without retrying)?", MessageBoxButtons.AbortRetryIgnore);
+                            if (response == DialogResult.Abort) return;
+                            if (response == DialogResult.Retry) continue;
+                        }
+                    }
+                    break;
                 }
 
                 StatusAdd("Loading branches from git...");
@@ -361,26 +371,37 @@ namespace WhatsMerged.WinForms.Forms
             }
         }
 
+        private static readonly string[] TypicalMergeBranches = { "develop", "test", "demo", "release", "main", "master" };
+        private static readonly string[] TypicalMergeBranchesWithOrigin = TypicalMergeBranches.Select(x => "origin/" + x).ToArray();
+
         private void ShowMergeBranchHelper(bool fromMenu)
         {
-            var branchesToMove = new[] { "origin/develop", "origin/test", "origin/release", "origin/master" }
-                .Where(branch => WorkBranches.Any(b => b.StartsWith(branch)))
+            var branches = WorkBranches.Concat(MergeBranches).ToArray();
+            var branchesToMove = TypicalMergeBranchesWithOrigin
+                .Where(branch => branches.Any(b => b.StartsWith(branch, StringComparison.OrdinalIgnoreCase)))
                 .Select(branch => branch + "*")
                 .ToList();
 
             if (branchesToMove.Count == 0)
             {
-                if (fromMenu) Status("No auto-movable branches found");
+                Utils.ShowMessage("You can use the Right-Click Popup menu or the Ctrl + Arrow keys to move branches between lists.");
             }
             else
             {
-                var introPrefix = WorkBranches.Count > 0 && MergeBranches.Count == 0
-                    ? "This looks like a new project for WhatsMerged.\r\n"
+                var introText = WorkBranches.Count > 0 && MergeBranches.Count == 0
+                    ? "This project is new for WhatsMerged. Please select how you want to treat the branches that it contains.\r\n" +
+                      "We recognized some popular branch names, please tell us if these are Merge branches or not.\r\n\r\n"
                     : "";
+
+                introText +=
+                    "What we call Work branches (the left list) is where you implement your changes and fixes.\r\n" +
+                    "What we call Merge branches (the middle list) is where those changes are then merged, typically using PRs.\r\n\r\n" +
+                    "Note: these settings are stored in '" + Path.Combine(UserHomePath, UserSettingsFilename) + "'.\r\n\r\n" +
+                    "Please check/uncheck which groups of branches to set as Merge branches, with * meaning a wildcard that matches all text:";
 
                 var frm = new CheckboxListForm
                 {
-                    Intro = introPrefix + "Please check/uncheck which groups of branches to set as Merge branches:",
+                    Intro = introText,
                     Items = branchesToMove,
                     StartPosition = FormStartPosition.CenterParent
                 };
@@ -420,7 +441,7 @@ namespace WhatsMerged.WinForms.Forms
         private void Status(string s)
         {
             lblStatus.Text = s;
-            Utils.PaintNow();
+            Utils.PaintNowWhileDiscardingOtherEvents();
         }
 
         private void StatusAdd(string s)
@@ -433,8 +454,8 @@ namespace WhatsMerged.WinForms.Forms
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
             if (busy)
             {
-                this.Focus(); // It is important that we set Focus to the Form. Reason: if Focus stays on a Button that becomes disabled, then Focus can't be moved with the Tab-key later (only by clicking with the mouse).
-                this.ActiveControl = null;
+                Focus(); // It is important that we set Focus to the Form. Reason: if Focus stays on a Button that becomes disabled, then Focus can't be moved with the Tab-key later (only by clicking with the mouse).
+                ActiveControl = null;
             }
 
             // Controls that can be used even if no project has been loaded:
@@ -463,12 +484,12 @@ namespace WhatsMerged.WinForms.Forms
             btnMergeSortByDate.Enabled = enabled;
             btnIgnoreSortByDate.Enabled = enabled;
 
-            // Tooltips on Buttons somehow get deactivated by a click on the Button (meaning they no longer appear after that). There seems to be no property that we can set to prevent this.
-            // Discussion of this issue + possible solutions:
-            // https://social.msdn.microsoft.com/Forums/windows/en-US/92c71938-b1e4-4dc2-bcd4-6036cfef3cea/tooltip-disappear-after-clicking-the-control?forum=winforms
-            // A variation of the solutions from above has been used below. So far it seems to fix the issue.
             if (!busy)
             {
+                // Tooltips on Buttons somehow get deactivated by a click on the Button (meaning they no longer appear after that). There seems to be no property that we can set to prevent this.
+                // Discussion of this issue + possible solutions:
+                // https://social.msdn.microsoft.com/Forums/windows/en-US/92c71938-b1e4-4dc2-bcd4-6036cfef3cea/tooltip-disappear-after-clicking-the-control?forum=winforms
+                // A variation of the solutions from the link above has been used below: we deactivate each tooltip, hide it, and then reactivate it.
                 foreach (Control ctrl in ToolTips.Keys)
                 {
                     var tt = ToolTips[ctrl];
@@ -478,8 +499,8 @@ namespace WhatsMerged.WinForms.Forms
                 }
             }
 
-            // Allow Windows Paint events to be processed so the window gets updated:
-            Utils.PaintNow();
+            // Process Windows Paint events, and throw away all other events:
+            Utils.PaintNowWhileDiscardingOtherEvents();
         }
 
         private void OnEnterSelectNextControl(object sender, KeyPressEventArgs e)
@@ -491,42 +512,21 @@ namespace WhatsMerged.WinForms.Forms
             }
         }
 
-        // Click handlers for the 5 what-has-been-merged buttons
+        // Handling code for the various What-Has-Been-Merged-Where buttons
 
-        private void BtnWorkVsMerge_Click(object sender, EventArgs e)
-        {
-            ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, toMerge: true);
-        }
+        private void BtnWorkVsMerge_Click(object sender, EventArgs e) => ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, toMerge: true);
 
-        private void BtnMergeVsWork_Click(object sender, EventArgs e)
-        {
-            ShowMergeStatusInGrid(GetButtonText(sender), fromMerge: true, toWork: true);
-        }
+        private void BtnMergeVsWork_Click(object sender, EventArgs e) => ShowMergeStatusInGrid(GetButtonText(sender), fromMerge: true, toWork: true);
 
-        private void BtnWorkAndMergeVsMerge_Click(object sender, EventArgs e)
-        {
-            ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, fromMerge: true, toMerge: true);
-        }
+        private void BtnWorkAndMergeVsMerge_Click(object sender, EventArgs e) => ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, fromMerge: true, toMerge: true);
 
-        private void BtnWorkVsItself_Click(object sender, EventArgs e)
-        {
-            ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, toWork: true);
-        }
+        private void BtnWorkVsItself_Click(object sender, EventArgs e) => ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, toWork: true);
 
-        private void BtnMergeVsItself_Click(object sender, EventArgs e)
-        {
-            ShowMergeStatusInGrid(GetButtonText(sender), fromMerge: true, toMerge: true);
-        }
+        private void BtnMergeVsItself_Click(object sender, EventArgs e) => ShowMergeStatusInGrid(GetButtonText(sender), fromMerge: true, toMerge: true);
 
-        private void BtnWorkAndMergeVsItself_Click(object sender, EventArgs e)
-        {
-            ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, fromMerge: true, toWork: true, toMerge: true);
-        }
+        private void BtnWorkAndMergeVsItself_Click(object sender, EventArgs e) => ShowMergeStatusInGrid(GetButtonText(sender), fromWork: true, fromMerge: true, toWork: true, toMerge: true);
 
-        private string GetButtonText(object sender)
-        {
-            return (sender as Button)?.Text;
-        }
+        private string GetButtonText(object sender) => (sender as Button)?.Text;
 
         private void ShowMergeStatusInGrid(string title, bool fromWork = false, bool fromMerge = false, bool toWork = false, bool toMerge = false)
         {
@@ -607,26 +607,17 @@ namespace WhatsMerged.WinForms.Forms
 
         // Shortcuts for accessing the BindingLists from the Engine.ProjectSettings object
 
-        BindingList<string> WorkBranches => WMEngine.ProjectSettings.WorkBranches;
-        BindingList<string> MergeBranches => WMEngine.ProjectSettings.MergeBranches;
-        BindingList<string> IgnoreBranches => WMEngine.ProjectSettings.IgnoreBranches;
+        private BindingList<string> WorkBranches => WMEngine.ProjectSettings.WorkBranches;
+        private BindingList<string> MergeBranches => WMEngine.ProjectSettings.MergeBranches;
+        private BindingList<string> IgnoreBranches => WMEngine.ProjectSettings.IgnoreBranches;
 
         // MouseDown handlers for all 3 ListBoxes. They handle both left-click (deselect item in other ListBoxes) and right-click (show the proper menu at the mouse-click location).
 
-        private void LstWorkBranches_MouseDown(object sender, MouseEventArgs e)
-        {
-            BranchListMouseDown(e, lstWorkBranches, Menu_LstWorkBranches);
-        }
+        private void LstWorkBranches_MouseDown(object sender, MouseEventArgs e) => BranchListMouseDown(e, lstWorkBranches, Menu_LstWorkBranches);
 
-        private void LstMergeBranches_MouseDown(object sender, MouseEventArgs e)
-        {
-            BranchListMouseDown(e, lstMergeBranches, Menu_LstMergeBranches);
-        }
+        private void LstMergeBranches_MouseDown(object sender, MouseEventArgs e) => BranchListMouseDown(e, lstMergeBranches, Menu_LstMergeBranches);
 
-        private void LstIgnoreBranches_MouseDown(object sender, MouseEventArgs e)
-        {
-            BranchListMouseDown(e, lstIgnoreBranches, Menu_LstIgnoreBranches);
-        }
+        private void LstIgnoreBranches_MouseDown(object sender, MouseEventArgs e) => BranchListMouseDown(e, lstIgnoreBranches, Menu_LstIgnoreBranches);
 
         private void BranchListMouseDown(MouseEventArgs e, ListBox listbox, ContextMenuStrip menu)
         {
@@ -682,15 +673,15 @@ namespace WhatsMerged.WinForms.Forms
             var listSource = (BindingList<string>)listBoxSource.DataSource; // Get the BindingLists from source + target ListBoxes
             var listTarget = (BindingList<string>)listBoxTarget.DataSource;
 
-            int index = listBoxSource.SelectedIndex;    // Get the source item
+            var index = listBoxSource.SelectedIndex;    // Get the source item
             if (index < 0) return; // Happens e.g. if user "tabs" into Listbox without making an item selected.
 
             var itemToMove = listSource[index];
 
-            var TopIndex = listBoxSource.TopIndex;      // Source ListBox: Get scroll position, remove item from BindingList (it will sync to the ListBox), make no item selected, restore scroll position
+            var topIndex = listBoxSource.TopIndex;      // Source ListBox: Get scroll position, remove item from BindingList (it will sync to the ListBox), make no item selected, restore scroll position
             listSource.RemoveAt(index);
             listBoxSource.SelectedIndex = -1;
-            listBoxSource.TopIndex = Math.Min(listSource.Count, TopIndex);
+            listBoxSource.TopIndex = Math.Min(listSource.Count, topIndex);
 
             listTarget.Add(itemToMove);                 // Destination ListBox: add item to BindingList (it will sync to the ListBox), make the item selected, give focus to ListBox
             listBoxTarget.SelectedIndex = listTarget.Count - 1;
@@ -701,20 +692,11 @@ namespace WhatsMerged.WinForms.Forms
 
         // KeyDown event handlers for all 3 ListBoxes
 
-        private void LstWorkBranches_KeyDown(object sender, KeyEventArgs e)
-        {
-            BranchListKeyDown(e, lstWorkBranches, null, lstMergeBranches);
-        }
+        private void LstWorkBranches_KeyDown(object sender, KeyEventArgs e) => BranchListKeyDown(e, lstWorkBranches, null, lstMergeBranches);
 
-        private void LstMergeBranches_KeyDown(object sender, KeyEventArgs e)
-        {
-            BranchListKeyDown(e, lstMergeBranches, lstWorkBranches, lstIgnoreBranches);
-        }
+        private void LstMergeBranches_KeyDown(object sender, KeyEventArgs e) => BranchListKeyDown(e, lstMergeBranches, lstWorkBranches, lstIgnoreBranches);
 
-        private void LstIgnoreBranches_KeyDown(object sender, KeyEventArgs e)
-        {
-            BranchListKeyDown(e, lstIgnoreBranches, lstMergeBranches, null);
-        }
+        private void LstIgnoreBranches_KeyDown(object sender, KeyEventArgs e) => BranchListKeyDown(e, lstIgnoreBranches, lstMergeBranches, null);
 
         private void BranchListKeyDown(KeyEventArgs e, ListBox activeListBox, ListBox listBoxLeft, ListBox listBoxRight)
         {
@@ -722,26 +704,25 @@ namespace WhatsMerged.WinForms.Forms
             {
                 e.Handled = true; // We mark all Ctrl-key-combos as Handled, so no 'default' behaviour remains, regardless of if we really act on a Ctrl-key-combo or not.
 
-                if (e.KeyCode == Keys.Up)
+                switch (e.KeyCode)
                 {
-                    MoveSelectedItem(activeListBox, -1);
-                }
-                else if (e.KeyCode == Keys.Down)
-                {
-                    MoveSelectedItem(activeListBox, +1);
-                }
-                else if (e.KeyCode == Keys.Left)
-                {
-                    MoveSelectedItem(activeListBox, listBoxLeft);
-                }
-                else if (e.KeyCode == Keys.Right)
-                {
-                    MoveSelectedItem(activeListBox, listBoxRight);
+                    case Keys.Up:
+                        MoveSelectedItem(activeListBox, -1);
+                        break;
+                    case Keys.Down:
+                        MoveSelectedItem(activeListBox, +1);
+                        break;
+                    case Keys.Left:
+                        MoveSelectedItem(activeListBox, listBoxLeft);
+                        break;
+                    case Keys.Right:
+                        MoveSelectedItem(activeListBox, listBoxRight);
+                        break;
                 }
             }
         }
 
-        // Mouse DoubleClick events for the 3 ListBoxes
+        // Handling of DoubleClick for the 3 ListBoxes
 
         private void LstWorkBranches_MouseDoubleClick(object sender, MouseEventArgs e)
         {
@@ -761,11 +742,16 @@ namespace WhatsMerged.WinForms.Forms
             LstIgnoreBranches_KeyDown(sender, keyEvent);
         }
 
-        // Mouse Click events for the 3 sort-by-date Buttons
+        // Handling of Click for the 3 sort-by-date Buttons
+
+        private void BtnWorkSortByDate_Click(object sender, EventArgs e) => SortByCommitDate(lstWorkBranches);
+
+        private void BtnMergeSortByDate_Click(object sender, EventArgs e) => SortByCommitDate(lstMergeBranches);
+
+        private void BtnIgnoreSortByDate_Click(object sender, EventArgs e) => SortByCommitDate(lstIgnoreBranches);
 
         private void SortByCommitDate(ListBox lbx)
         {
-
             Status("Sorting...");
             SetEnabled(busy: true);
             try
@@ -781,39 +767,19 @@ namespace WhatsMerged.WinForms.Forms
             }
         }
 
-        private void BtnWorkSortByDate_Click(object sender, EventArgs e)
-        {
-            SortByCommitDate(lstWorkBranches);
-        }
+        private void BtnReloadProject_Click(object sender, EventArgs e) => LoadSelectedProject(force: true);
 
-        private void BtnMergeSortByDate_Click(object sender, EventArgs e)
-        {
-            SortByCommitDate(lstMergeBranches);
-        }
-
-        private void BtnIgnoreSortByDate_Click(object sender, EventArgs e)
-        {
-            SortByCommitDate(lstIgnoreBranches);
-        }
-
-        private void BtnReloadProject_Click(object sender, EventArgs e)
-        {
-            LoadSelectedProject(force: true);
-        }
-
-        private void Grid_SelectionChanged(object sender, EventArgs e)
-        {
-            // Having a higlighted selected cell in the grid serves no purpose, there is nothing the user can do with it, so
-            // we un-select it as soon as one is made (even a simple click in the grid will cause a selection).
-            grid.ClearSelection();
-        }
+        // Having a higlighted selected cell in the grid serves no purpose. There is nothing the user can do with it, so
+        // we un-select it as soon as one is made. Every click in the grid will cause a selection.
+        private void Grid_SelectionChanged(object sender, EventArgs e) => grid.ClearSelection();
 
         private ContextMenuStrip Create_Menu_LstWorkBranches()
         {
             return new ContextMenuStrip()
                 .WithItem("Set as Merge branch | Ctrl ->", () => MoveSelectedItem(lstWorkBranches, lstMergeBranches))
                 .WithItem("Set as Ignored branch | Ctrl -> ->", () => MoveSelectedItem(lstWorkBranches, lstIgnoreBranches))
-                .WithItem("Auto-set Merge branches", () => ShowMergeBranchHelper(fromMenu: true));
+                .WithSeparator()
+                .WithItem("Move items from this list to the Merge branches list using helper dialog", () => ShowMergeBranchHelper(fromMenu: true));
         }
 
         private ContextMenuStrip Create_Menu_LstMergeBranches()
@@ -847,20 +813,11 @@ namespace WhatsMerged.WinForms.Forms
 
         // SelectedIndexChanged for all 3 ListBoxes. These handle the situation where person uses TAB key followed by Up or Down, which causes the focused ListBox to get a Selected Item. And then we de-select the other ListBoxes.
 
-        private void LstWorkBranches_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            DeSelectTheOthersIfSelected(lstWorkBranches);
-        }
+        private void LstWorkBranches_SelectedIndexChanged(object sender, EventArgs e) => DeSelectTheOthersIfSelected(lstWorkBranches);
 
-        private void LstMergeBranches_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            DeSelectTheOthersIfSelected(lstMergeBranches);
-        }
+        private void LstMergeBranches_SelectedIndexChanged(object sender, EventArgs e) => DeSelectTheOthersIfSelected(lstMergeBranches);
 
-        private void LstIgnoreBranches_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            DeSelectTheOthersIfSelected(lstIgnoreBranches);
-        }
+        private void LstIgnoreBranches_SelectedIndexChanged(object sender, EventArgs e) => DeSelectTheOthersIfSelected(lstIgnoreBranches);
 
         private void DeSelectTheOthersIfSelected(ListBox listbox)
         {
@@ -868,15 +825,9 @@ namespace WhatsMerged.WinForms.Forms
                 ClearSelectedItems(exceptFor: listbox);
         }
 
-        private void CbxProject_DropDownClosed(object sender, EventArgs e)
-        {
-            LoadSelectedProject(force: false);
-        }
+        private void CbxProject_DropDownClosed(object sender, EventArgs e) => LoadSelectedProject(force: false);
 
-        private void BtnUserSettings_Click(object sender, EventArgs e)
-        {
-            EditUserSettings();
-        }
+        private void BtnUserSettings_Click(object sender, EventArgs e) => EditUserSettings();
 
         private void EditUserSettings(string titleText = null, bool hideCancelButton = false)
         {
@@ -926,16 +877,9 @@ namespace WhatsMerged.WinForms.Forms
             }
         }
 
-        private void SaveUserSettings()
-        {
-            JsonFileHelper.Save(UserSettings, UserHomePath, UserSettingsFilename, reporter: this);
-        }
+        private void SaveUserSettings() => JsonFileHelper.Save(UserSettings, UserHomePath, UserSettingsFilename, reporter: this);
 
-        private void ShowMessage(string msg)
-        {
-            var frmError = new MessageForm { Message = msg, StartPosition = FormStartPosition.CenterParent };
-            frmError.ShowDialog(this);
-        }
+        private void ShowMessage(string msg) => new MessageForm { Message = msg, StartPosition = FormStartPosition.CenterParent }.ShowDialog(this);
 
         private string ValidateFolders(string[] folders)
         {
