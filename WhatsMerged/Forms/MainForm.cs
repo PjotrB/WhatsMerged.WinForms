@@ -376,15 +376,16 @@ namespace WhatsMerged.WinForms.Forms
 
         private void ShowMergeBranchHelper(bool fromMenu)
         {
-            var branches = WorkBranches.Concat(MergeBranches).ToArray();
-            var branchesToMove = TypicalMergeBranchesWithOrigin
-                .Where(branch => branches.Any(b => b.StartsWith(branch, StringComparison.OrdinalIgnoreCase)))
+
+            var branchesMoveCandidates = TypicalMergeBranchesWithOrigin
+                .Where(branch => WorkBranches.Any(b => b.StartsWith(branch, StringComparison.OrdinalIgnoreCase)))
                 .Select(branch => branch + "*")
                 .ToList();
 
-            if (branchesToMove.Count == 0)
+            if (branchesMoveCandidates.Count == 0)
             {
-                Utils.ShowMessage("You can use the Right-Click Popup menu or the Ctrl + Arrow keys to move branches between lists.");
+                if (fromMenu)
+                    Utils.ShowMessage("There are no branches in the Work list that we would consider as belonging in the Merge list.\r\nIf you want to make changes, you can use the Right-Click Popup menu from each list or selecting a branch + Ctrl/Arrow keys to move branches between lists.");
             }
             else
             {
@@ -402,22 +403,22 @@ namespace WhatsMerged.WinForms.Forms
                 var frm = new CheckboxListForm
                 {
                     Intro = introText,
-                    Items = branchesToMove,
+                    Items = branchesMoveCandidates,
                     StartPosition = FormStartPosition.CenterParent
                 };
                 frm.ShowDialog(this);
 
                 if (frm.Items.Count > 0)
                 {
-                    branchesToMove.Clear();
+                    branchesMoveCandidates.Clear();
                     for (var i = 0; i < frm.Items.Count; i++)
                     {
                         var branch = frm.Items[i].RemoveAtEnd("*");
-                        branchesToMove.AddRange(WorkBranches.Where(b => b.StartsWith(branch)));
+                        branchesMoveCandidates.AddRange(WorkBranches.Where(b => b.StartsWith(branch)));
                     }
 
-                    WorkBranches.RemoveRange(branchesToMove);
-                    MergeBranches.AddRange(branchesToMove);
+                    WorkBranches.RemoveRange(branchesMoveCandidates);
+                    MergeBranches.AddRange(branchesMoveCandidates);
 
                     WMEngine.SortByCommitDate(MergeBranches); // Workbranches always gets sorted on load, so no need to do that again.
                     lstMergeBranches.SelectedIndex = -1;
@@ -779,7 +780,7 @@ namespace WhatsMerged.WinForms.Forms
                 .WithItem("Set as Merge branch | Ctrl ->", () => MoveSelectedItem(lstWorkBranches, lstMergeBranches))
                 .WithItem("Set as Ignored branch | Ctrl -> ->", () => MoveSelectedItem(lstWorkBranches, lstIgnoreBranches))
                 .WithSeparator()
-                .WithItem("Move items from this list to the Merge branches list using helper dialog", () => ShowMergeBranchHelper(fromMenu: true));
+                .WithItem("Recommend me items to be moved from the Work list to the Merge list", () => ShowMergeBranchHelper(fromMenu: true));
         }
 
         private ContextMenuStrip Create_Menu_LstMergeBranches()
