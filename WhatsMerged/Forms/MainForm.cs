@@ -336,15 +336,13 @@ namespace WhatsMerged.WinForms.Forms
                     WMEngine.GitRefresh();
                     if (HasError())
                     {
-                        if (txtError.Text.Contains("[deleted]"))
+                        if (txtError.Text.Contains("[deleted]") || txtError.Text.Contains("[new branch]"))
                         {
-                            var msg = "One or more branches were deleted on the server, see output from git:\r\n\r\n" + txtError.Text + "\r\n\r\nThe branch lists will be updated to reflect this.";
                             ClearError();
-                            Utils.ShowMessage(msg);
                         }
                         else
                         {
-                            var response = Utils.ShowMessage("The server is not accessible, or your password may have expired.\r\nDo you want to Abort, Retry or Ignore (= proceed without retrying)?", MessageBoxButtons.AbortRetryIgnore);
+                            var response = Utils.ShowMessage("Please see Git error output.\r\nDo you want to Abort, Retry or Ignore (= proceed without retrying)?", MessageBoxButtons.AbortRetryIgnore);
                             if (response == DialogResult.Abort) return;
                             if (response == DialogResult.Retry) continue;
                         }
